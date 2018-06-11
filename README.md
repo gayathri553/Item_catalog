@@ -1,1 +1,31 @@
 # Item_catalog
+### This project is the Fourth project of Udacity Full Stack Nanodegree course
+
+### About project
+  This project is completely based on developing an application with usage of framework known as Flask environment
+  OAuth2 provides authentication for further CRUD functionality on the application. 
+  Currently OAuth2 is implemented for Google Accounts.
+#### Required:
+      HTML
+      CSS
+      Python
+      vagarnt
+      virtualbox
+      Flask Framework
+      OAuth
+#### In this respoiratory consists of folders:
+    - templates:- consists of all html pages that is needed for the project
+    -static:- consists of css file which is used for styling of my webpage
+    
+#### database_setup.py
+    used for creating database that we required for the CRUD operations and classes we used
+#### project.py
+###### This is the main file which we are having every paths that are needed to perform our CRUD operations.
+###### In this file we import all neccessary files that required for our project.
+
+#### logmenuitems
+###### consists of all data that is stored in database.
+
+#### Google Login:
+###### For API client ID:
+####### we generate the client ID for the project by using Google Dev Console
