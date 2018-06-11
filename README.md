@@ -31,4 +31,5 @@
 ###### we generate the client ID for the project by using Google Dev Console
         After generating API client ID for project then use that ID in login.html file
         Then after download the JSON file and use that file in our project.py file.
-        
+##### Resources used:
+###### udacity classroom videos in our course for this project.
