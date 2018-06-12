@@ -31,6 +31,14 @@
 ###### we generate the client ID for the project by using Google Dev Console
         After generating API client ID for project then use that ID in login.html file
         Then after download the JSON file and use that file in our project.py file.
+##### To Run:
+###### After installing all requirments:
+###### Goto vagrant folder make commands like vagrant up and vagrant ssh and goto vagrant folder.
+###### Then after open flask-applcation folder and activate flask environment by using command:
+        source flask-env/bin/activate
+        To deactivate: just type deactivate
+###### Then after run the python file to get our application.
+###### Then open web browser and run localhost. 
 ##### Resources used:
 ###### udacity classroom videos in our course for this project.
 ###### Finally the code is checked under pep8 online checker
