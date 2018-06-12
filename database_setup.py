@@ -52,6 +52,7 @@ class Gadgets(Base):
             'description': self.description,
             'id': self.id,
             'price': self.price,
+            'item_id': self.item_id,
         }
 
 
