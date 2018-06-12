@@ -37,8 +37,18 @@ DBSession = sessionmaker(bind=engine)
 session = DBSession()
 
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' in login_session:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 @app.route('/login')
 def showLogin():
+    session = DBSession()
     state = ''.join(random.choice(string.ascii_uppercase + string.digits)
                     for x in xrange(32))
     login_session['state'] = state
@@ -47,6 +57,7 @@ def showLogin():
 
 @app.route('/gconnect', methods=['POST'])
 def gconnect():
+    session = DBSession()
     if request.args.get('state') != login_session['state']:
         response = make_response(json.dumps('Invalid state parameter.'), 401)
         response.headers['Content-Type'] = 'application/json'
@@ -88,7 +99,7 @@ def gconnect():
     if result['issued_to'] != CLIENT_ID:
         response = make_response(
             json.dumps("Token's client ID does not match app's."), 401)
-        print "Token's client ID does not match app's."
+        print ("Token's client ID does not match app's.")
         response.headers['Content-Type'] = 'application/json'
         return response
 
@@ -113,7 +124,6 @@ def gconnect():
     login_session['username'] = data['name']
     login_session['picture'] = data['picture']
     login_session['email'] = data['email']
-
     # check whether user exists
     user_id = getUserID(login_session['email'])
     if not user_id:
@@ -131,11 +141,30 @@ def gconnect():
     output += '-webkit-border-radius: 150px;'
     output += '-moz-border-radius: 150px;">'
     flash("you are now logged in as %s" % login_session['username'])
-    print "done!"
+    print ("done!")
     return output
 
 
+@app.route('/logout')
+def logout():
+    if 'provider' in login_session:
+        if login_session['provider'] == 'google':
+            gdisconnect()
+            del login_session['gplus_id']
+            del login_session['access_token']
+            del login_session['username']
+            del login_session['email']
+            del login_session['picture']
+            del login_session['user_id']
+            flash("you have succesfully been logout")
+            return redirect(url_for('showCompany'))
+    else:
+        flash("you were not logged in")
+        return redirect(url_for('showCompany'))
+
+
 def createUser(login_session):
+    session = DBSession()
     newUser = User(name=login_session['username'], email=login_session[
                    'email'], picture=login_session['picture'])
     session.add(newUser)
@@ -145,11 +174,13 @@ def createUser(login_session):
 
 
 def getUserInfo(user_id):
+    session = DBSession()
     user = session.query(User).filter_by(id=user_id).one()
     return user
 
 
 def getUserID(email):
+    session = DBSession()
     try:
         user = session.query(User).filter_by(email=email).one()
         return user.id
@@ -159,6 +190,7 @@ def getUserID(email):
 
 @app.route('/gdisconnect')
 def gdisconnect():
+    session = DBSession()
     access_token = login_session.get('access_token')
     if access_token is None:
         response = make_response(
@@ -188,6 +220,7 @@ def gdisconnect():
 # JSON APIs to view Comapny Information
 @app.route('/companies/<int:item_id>/menu/JSON')
 def companyMenuJSON(item_id):
+    session = DBSession()
     item = session.query(Company).filter_by(id=item_id).one()
     items = session.query(Gadgets).filter_by(
         item_id=item_id).all()
@@ -196,12 +229,14 @@ def companyMenuJSON(item_id):
 
 @app.route('/companies/<int:item_id>/menu/<int:menu_id>/JSON')
 def menuItemJSON(item_id, menu_id):
+    session = DBSession()
     Menu_Item = session.query(Gadgets).filter_by(id=menu_id).one()
     return jsonify(Menu_Item=Menu_Item.serialize)
 
 
 @app.route('/companies/JSON')
 def companyJSON():
+    session = DBSession()
     thing = session.query(Company).all()
     return jsonify(thing=[r.serialize for r in thing])
 
@@ -210,7 +245,9 @@ def companyJSON():
 @app.route('/')
 @app.route('/companies/')
 def showCompany():
+    session = DBSession()
     thing = session.query(Company).order_by(asc(Company.name))
+    session.close()
     return render_template('company.html', thing=thing)
 
 # create new company
@@ -218,6 +255,7 @@ def showCompany():
 
 @app.route('/companies/new/', methods=['GET', 'POST'])
 def newCompany():
+    session = DBSession()
     if 'username' not in login_session:
         return redirect('/login')
     if request.method == 'POST':
@@ -226,6 +264,7 @@ def newCompany():
         session.add(newThing)
         flash('New Thing %s Successfully Created' % newThing.name)
         session.commit()
+        session.close()
         return redirect(url_for('showCompany'))
     else:
         return render_template('newCompany.html')
@@ -235,67 +274,91 @@ def newCompany():
 
 @app.route('/companies/<int:item_id>/edit/', methods=['GET', 'POST'])
 def editCompany(item_id):
-    if 'username' not in login_session:
-        return redirect('/login')
+    session = DBSession()
     editedThing = session.query(
         Company).filter_by(id=item_id).one()
-    if request.method == 'POST':
-        if request.form['name']:
-            editedThing.name = request.form['name']
-            flash('Company Successfully Edited %s' % editedThing.name)
-            return redirect(url_for('showCompany'))
-    else:
-        return render_template('editCompany.html', thing=editedThing)
-
-
-# used to delete the company
-@app.route('/companies/<int:item_id>/delete/', methods=['GET', 'POST'])
-def deleteCompany(item_id):
     if 'username' not in login_session:
         return redirect('/login')
+    else:
+        if editedThing.user_id == login_session['user_id']:
+            if request.method == 'POST':
+                if request.form['name']:
+                    editedThing.name = request.form['name']
+                    flash('Company Successfully Edited %s' % editedThing.name)
+                    session.add(editedThing)
+                    session.commit()
+                    session.close()
+                return redirect(url_for('showCompany'))
+            else:
+                return render_template('editCompany.html', thing=editedThing)
+        else:
+            flash('No permision!!')
+            return redirect(url_for('showCompany', item_id=item_id))
+
+# used to delete the company
+
+
+@app.route('/companies/<int:item_id>/delete/', methods=['GET', 'POST'])
+def deleteCompany(item_id):
+    session = DBSession()
     thingToDelete = session.query(
         Company).filter_by(id=item_id).one()
-    if request.method == 'POST':
-        session.delete(thingToDelete)
-        flash('%s Successfully Deleted' % thingToDelete.name)
-        session.commit()
-        return redirect(url_for('showCompany', item_id=item_id))
+    if 'username' not in login_session:
+        return redirect('/login')
     else:
-        return render_template('deleteCompany.html', thing=thingToDelete)
-
+        if thingToDelete.user_id == login_session['user_id']:
+            if request.method == 'POST':
+                session.delete(thingToDelete)
+                flash('%s Successfully Deleted' % thingToDelete.name)
+                session.commit()
+                session.close()
+                return redirect(url_for('showCompany', item_id=item_id))
+            else:
+                return render_template(
+                    'deleteCompany.html', thing=thingToDelete)
+        else:
+            flash('No permision!!')
+            return redirect(url_for('showCompany', item_id=item_id))
 # shows the items in the company
 
 
 @app.route('/companies/<int:item_id>')
 @app.route('/companies/<int:item_id>/menu/')
 def showMenu(item_id):
+    session = DBSession()
     thing = session.query(Company).filter_by(id=item_id).one()
     items = session.query(Gadgets).filter_by(
         item_id=item_id).all()
+    session.close()
     return render_template('gadget.html', items=items, thing=thing)
 
 
 # used to ceate a new menu item
 @app.route('/companies/<int:item_id>/menu/new/', methods=['GET', 'POST'])
 def newMenuItem(item_id):
+    session = DBSession()
     if 'username' not in login_session:
         return redirect('/login')
     thing = session.query(Company).filter_by(id=item_id).one()
-    if request.method == 'POST':
-        newItem = Gadgets(
-            name=request.form['name'],
-            description=request.form['description'],
-            price=request.form['price'],
-            item_id=item_id,
-            user_id=1
-            )
-        session.add(newItem)
-        session.commit()
-        flash('New Menu %s Item Successfully Created' % (newItem.name))
-        return redirect(url_for('showMenu', item_id=item_id))
+    if login_session['user_id'] == thing.user_id:
+        if request.method == 'POST':
+            newItem = Gadgets(
+                name=request.form['name'],
+                description=request.form['description'],
+                price=request.form['price'],
+                item_id=item_id,
+                user_id=thing.user_id
+                                            )
+            session.add(newItem)
+            session.commit()
+            flash('New Menu %s Item Successfully Created' + newItem.name)
+            session.close()
+            return redirect(url_for('showMenu', item_id=item_id))
+        else:
+            return render_template('newmenuitem.html', item_id=item_id)
     else:
-        return render_template('newmenuitem.html', item_id=item_id)
-
+        flash("No permissions!!")
+        return redirect(url_for('showCompany', item_id=item_id))
 # used to edit a menu item
 
 
@@ -303,43 +366,55 @@ def newMenuItem(item_id):
     '/companies/<int:item_id>/menu/<int:menu_id>/edit',
     methods=['GET', 'POST'])
 def editMenuItem(item_id, menu_id):
+    session = DBSession()
     if 'username' not in login_session:
         return redirect('/login')
     editedItem = session.query(Gadgets).filter_by(id=menu_id).one()
     thing = session.query(Company).filter_by(id=item_id).one()
-    if request.method == 'POST':
-        if request.form['name']:
-            editedItem.name = request.form['name']
-        if request.form['description']:
-            editedItem.description = request.form['description']
-        if request.form['price']:
-            editedItem.price = request.form['price']
-        session.add(editedItem)
-        session.commit()
-        flash('Menu Item Successfully Edited')
-        return redirect(url_for('showMenu', item_id=item_id))
+    if login_session['user_id'] == thing.user_id:
+        if request.method == 'POST':
+            if request.form['name']:
+                editedItem.name = request.form['name']
+            if request.form['description']:
+                editedItem.description = request.form['description']
+            if request.form['price']:
+                editedItem.price = request.form['price']
+            session.add(editedItem)
+            session.commit()
+            session.close()
+            flash('Menu Item Successfully Edited')
+            return redirect(url_for('showMenu', item_id=item_id))
+        else:
+            return render_template(
+                'editmenuitem.html',
+                item_id=item_id, menu_id=menu_id, item=editedItem)
     else:
-        return render_template(
-            'editmenuitem.html',
-            item_id=item_id, menu_id=menu_id, item=editedItem)
-
-
+        flash("No permissions!!")
+        return redirect(url_for('showCompany', item_id=item_id))
 # used to delete the menu item
+
+
 @app.route(
     '/companies/<int:item_id>/menu/<int:menu_id>/delete',
     methods=['GET', 'POST'])
 def deleteMenuItem(item_id, menu_id):
+    session = DBSession()
     if 'username' not in login_session:
         return redirect('/login')
     thing = session.query(Company).filter_by(id=item_id).one()
     thingToDelete = session.query(Gadgets).filter_by(id=menu_id).one()
-    if request.method == 'POST':
-        session.delete(thingToDelete)
-        session.commit()
-        flash('Menu Item Successfully Deleted')
-        return redirect(url_for('showMenu', item_id=item_id))
+    if login_session['user_id'] == thing.user_id:
+        if request.method == 'POST':
+            session.delete(thingToDelete)
+            session.commit()
+            session.close()
+            flash('Menu Item Successfully Deleted')
+            return redirect(url_for('showMenu', item_id=item_id))
+        else:
+            return render_template('deletemenuitem.html', item=thingToDelete)
     else:
-        return render_template('deletemenuitem.html', item=thingToDelete)
+        flash("No permissions!!")
+        return redirect(url_for('showCompany', item_id=item_id))
 
 
 if __name__ == '__main__':
